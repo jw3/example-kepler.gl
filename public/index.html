@@ -7,7 +7,7 @@
     <meta charset="UTF-8"/>
     <title>Kepler.gl embedded map</title>
     <link rel="stylesheet" href="https://d1a3f4spazzrp4.cloudfront.net/kepler.gl/uber-fonts/4.0.0/superfine.css">
-    <link href="https:https://unpkg.com/maplibre-gl@^3/dist/maplibre-gl.css" rel="stylesheet">
+    <link href="https://unpkg.com/maplibre-gl@^3/dist/maplibre-gl.css" rel="stylesheet">
     <script src="https://unpkg.com/react@16.8.4/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@16.8.4/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/redux@3.7.2/dist/redux.js" crossorigin></script>
@@ -20,13 +20,133 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
+            background-color: #2c353c;
+        }
+        #outer {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        #app {
+            z-index: 1;
+        }
+        #progressBar {
+            width: 0;
+            height: 30px;
+            background-color: darkgreen;
+        }
+        #progressContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            background-color: #2c353c;
+            z-index: 6;
+        }
+        #progressText {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            line-height: 30px;
+            color: #adb0c1;
+            font-weight: bold;
+            top: 0;
         }
     </style>
 </head>
 <body>
-<div id="app">
+<div id="outer">
+    <div id="progressContainer">
+        <div id="progressBar"></div>
+        <div id="progressText"></div>
+    </div>
+    <div id="app"></div>
 </div>
 <script>
+    function getQueryParameter(name) {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get(name);
+    }
+
+    function getSiteRootUrl() {
+        const url = new URL(window.location.href);
+        const pathSegments = url.pathname.split('/').filter(segment => segment);
+        const basePath = pathSegments.length > 0 ? `/${pathSegments[0]}` : '';
+        return `${url.origin}${basePath}`;
+    }
+
+    async function loadJsonFile(filename) {
+        const siteRootUrl = getSiteRootUrl();
+        return new Promise((resolve, reject) => {
+            fetch(`${siteRootUrl}/${filename}`)
+                .then(response => resolve(response.json()))
+                .catch(error => reject(error));
+        });
+    }
+
+    function fadeout(elementId, duration) {
+        const element = document.getElementById(elementId);
+        const interval = 50; // Interval in milliseconds
+        const decrement = interval / duration;
+        let opacity = 1;
+
+        const fadeEffect = setInterval(function () {
+            if (opacity <= 0) {
+                clearInterval(fadeEffect);
+                element.style.display = 'none';
+            } else {
+                opacity -= decrement;
+                element.style.opacity = opacity;
+            }
+        }, interval);
+    }
+
+    function loadDefaultExtent(store, keplerGl) {
+        store.dispatch(keplerGl.updateMap({
+            latitude: 29.64867739592424, longitude: -92.71624642863992, zoom: 7.75
+        }, 0));
+    }
+    async function performDatasetDownload(filename) {
+        const siteRootUrl = getSiteRootUrl();
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', `${siteRootUrl}/${filename}`, true);
+        xhr.responseType = 'json';
+
+        xhr.onprogress = function(event) {
+            if (event.lengthComputable) {
+                updateProgress(Math.round((event.loaded / event.total) * 100));
+            }
+        };
+        xhr.onload = function(event) {
+            updateProgress(100);
+            if (xhr.status === 200) {
+                (async function customize(keplerGl, store) {
+                    store.dispatch(keplerGl.addDataToMap({
+                        datasets: xhr.response,
+                        config: await config,
+                    }));
+                    loadDefaultExtent(store, KeplerGl);
+                }(KeplerGl, store))
+                fadeout("progressContainer", 3000);
+            } else {
+                console.log(`error: server returned ${xhr.status}`);
+            }
+        };
+        xhr.send();
+        document.getElementById('progressContainer').style.display = 'block';
+
+        function updateProgress(percent) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.style.width = `${percent}%`;
+            progressText.textContent = `Dataset download ${percent}%`;
+        }
+    }
+</script>
+<script>
+    const config = loadJsonFile('config.json');
     const reducers = (function createReducers(redux, keplerGl) {
         return redux.combineReducers({
             keplerGl: keplerGl.keplerGlReducer.initialState({
@@ -61,15 +181,15 @@
         );
     }(Redux, enhancers));
 
-    var KeplerElement = (function makeKeplerElement(react, keplerGl) {
+    const KeplerElement = (function makeKeplerElement(react, keplerGl) {
         return function App() {
-            var rootElm = react.useRef(null);
-            var _useState = react.useState({
+            const rootElm = react.useRef(null);
+            const _useState = react.useState({
                 width: window.innerWidth,
                 height: window.innerHeight
             });
-            var windowDimension = _useState[0];
-            var setDimension = _useState[1];
+            const windowDimension = _useState[0];
+            const setDimension = _useState[1];
             react.useEffect(function sideEffect() {
                 function handleResize() {
                     setDimension({width: window.innerWidth, height: window.innerHeight});
@@ -78,6 +198,13 @@
                 return function () {
                     window.removeEventListener('resize', handleResize);
                 };
+            }, []);
+            react.useEffect(async function sideEffect() {
+                loadDefaultExtent(store, KeplerGl);
+                const timeout = setTimeout(async () => {
+                    const fn = getQueryParameter('f') || 'kgl-1000-500.json';
+                    await performDatasetDownload(fn)
+                }, 1000);
             }, []);
             return react.createElement(
                 'div',
@@ -103,75 +230,6 @@
     (function render(react, reactDOM, app) {
         reactDOM.render(app, document.getElementById('app'));
     }(React, ReactDOM, app));
-</script>
-<script>
-    function getQueryParameter(name) {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get(name);
-    }
-
-    function loadJsonFile(filename) {
-        return new Promise((resolve, reject) => {
-            fetch(filename)
-                .then(response => response.json())
-                .then(data => {
-                    resolve(data);
-                })
-                .catch(error => reject(error));
-        });
-    }
-</script>
-<script>
-    const config = {
-        version: "v1",
-        config: {
-            visState: {
-                layers: [{
-                    type: "trip",
-                    config: {
-                        dataId: "my-dataset",
-                        color: [18, 147, 154],
-                        highlightColor: [252, 242, 26, 255],
-                        columns: {geojson: "_geojson"},
-                        isVisible: true,
-                        visConfig: {
-                            opacity: 0.8,
-                            thickness: 0.5,
-                            colorRange: {
-                                colors: ["#00939C", "#5DBABF", "#BAE1E2", "#F8C0AA", "#DD7755", "#C22E00"]
-                            },
-                            trailLength: 333,
-                            sizeRange: [0, 10]
-                        }
-                    },
-                    visualChannels: {
-                        colorField: {name: "vessel-type", type: "integer"},
-                        colorScale: "quantile",
-                        sizeField: null,
-                        sizeScale: "linear"
-                    }
-                }], animationConfig: {currentTime: null, speed: 0.1}
-            }
-        }
-    };
-    const filename = getQueryParameter('f');
-    if (filename) {
-        loadJsonFile(filename).catch(error => {
-            console.error('Error with the promise:', error);
-        });
-    } else {
-        console.error('No filename specified in the query parameter');
-    }
-
-    (async function customize(keplerGl, store) {
-        store.dispatch(keplerGl.addDataToMap({
-            datasets: await loadJsonFile(filename),
-            config: config,
-        }));
-        store.dispatch(keplerGl.updateMap({
-            latitude: 29.34867739592424, longitude: -92.71624642863992, zoom: 7.75
-        }, 0));
-    }(KeplerGl, store))
 </script>
 </body>
 </html>

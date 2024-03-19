@@ -1,2 +1,4 @@
 .idea
 .local
+*.json
+!config.json
