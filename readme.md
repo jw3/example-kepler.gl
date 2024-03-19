@@ -1,6 +1,8 @@
 Kepler.gl demo
 ===
 
+**https://jw3.github.io/example-kepler.gl/**
+
 Uses [Moving Features JSON](https://docs.ogc.org/is/19-045r3/19-045r3.html) (MF-JSON) from [MobilityDB's](https://mobilitydb.com/) [_libmeos_](https://www.libmeos.com/) as a datasource for the [Kepler.gl](https://kepler.gl/) Trip Layer
 
 ![screenshot](doc/img.png)
@@ -13,9 +15,9 @@ Deployed to GitHub Pages
 2. [Medium json](https://jw3.github.io/example-kepler.gl?f=kgl-3731-500.json) ~3700 tracks
 3. [Large json](https://jw3.github.io/example-kepler.gl?f=kgl-9146-250.json) ~9000 tracks
 
-The default pages url, without a query param, loads the 1k dataset.
+If no query param is specified the 1k dataset will load.
 
-The simulation runs on the GPU with WebGL, the larger datasets may not like a smaller GPU.
+The simulation runs on the host machine's GPU with WebGL, the larger datasets may not like a smaller GPU.
 
 The track color rendered in the demo is determined by the vessel type id.
 
